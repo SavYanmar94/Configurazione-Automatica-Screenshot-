@@ -82,6 +82,12 @@ jobs:
             }
           })();
           EOF
+          
+      - name: Compress Image
+        run: |
+          sudo apt-get install -y optipng
+          optipng -o7 screenshot.png
+          
 
       - name: Upload Screenshot
         uses: actions/upload-artifact@v3
