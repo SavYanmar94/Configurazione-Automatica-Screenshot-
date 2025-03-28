@@ -1,0 +1,81 @@
+name: Subito.it Screenshot Auto-Capture
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Ogni 6 ore
+  workflow_dispatch:        # Esecuzione manuale
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+
+      - name: Install dependencies
+        run: npm install puppeteer
+
+      - name: Take Screenshot
+        run: |
+          node <<EOF
+          const puppeteer = require('puppeteer');
+          const fs = require('fs');
+
+          (async () => {
+            const browser = await puppeteer.launch({ 
+              headless: 'new',
+              args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+            
+            const page = await browser.newPage();
+            await page.setViewport({ width: 1200, height: 800 });
+            
+            await page.goto('https://impresapiu.subito.it/shops/54233-el-principe-di-bavaro-biagio', { 
+              waitUntil: 'networkidle2',
+              timeout: 60000 
+            });
+
+            // Scroll automatico
+            await page.evaluate(async () => {
+              await new Promise(resolve => {
+                let totalHeight = 0;
+                const distance = 300;
+                const timer = setInterval(() => {
+                  const scrollHeight = document.body.scrollHeight;
+                  window.scrollBy(0, distance);
+                  totalHeight += distance;
+                  if(totalHeight >= scrollHeight) {
+                    clearInterval(timer);
+                    resolve();
+                  }
+                }, 200);
+              });
+            });
+
+            const screenshot = await page.screenshot({ fullPage: true });
+            fs.writeFileSync('screenshot.png', screenshot);
+            await browser.close();
+          })();
+          EOF
+
+      - name: Upload Screenshot
+        uses: actions/upload-artifact@v4  # Versione corretta
+        with:
+          name: subito-screenshot
+          path: screenshot.png
+
+      - name: Commit and Push
+        env:
+         GH_TOKEN: ${{ secrets.GH_ACTIONS_TOKEN }}
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
+          git add screenshot.png
+          git commit -m "Update screenshot [skip ci]" || echo "No changes"
+          git push origin main
